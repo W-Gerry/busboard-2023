@@ -9,6 +9,7 @@
   "author": "Bill Gerry",
   "license": "ISC",
   "dependencies": {
-    "node-fetch": "^3.3.1"
+    "node-fetch": "^3.3.1",
+    "readline-sync": "^1.4.10"
   }
 }
