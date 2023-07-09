@@ -6,7 +6,8 @@ import * as readline_sync from "readline-sync";
 
 // Define key variables for retrieving bus data
 const userPostcode = readline_sync.question("Please enter your Postcode: ");
-const radius = readline_sync.question("Please enter a search radius in 'm': ")
+//const radius = readline_sync.question("Please enter a search radius in 'm': ")
+const radius = "500";
 
 
 // Main function for displaying BusBoard
@@ -15,7 +16,8 @@ async function busBoard() {
     const coordData = await retrievePostcodeData(userPostcode);
     displayLongLat(coordData, userPostcode);
 
-    const localStopPoints = await retrieveStopPoints(coordData, radius);
+    const localStopPoints = await getClosestStopPoints(coordData, radius);
+    //console.log(localStopPoints);
 
     // const arrivalPredictions = await getArrivals(stopCode);
     // arrivalPredictions.sort((predictionA, predictionB) => predictionA.timeToStation - predictionB.timeToStation);
@@ -40,13 +42,22 @@ function displayLongLat(coordData, userPostcode) {
 
 
 // Function to get StopPoints in radius 1000m from lat and long data
-async function retrieveStopPoints(coordData, radius) {
+async function getClosestStopPoints(coordData, radius) {
     const stopPointsResponse = await fetch(`https://api.tfl.gov.uk/StopPoint/?lat=${coordData.result.latitude}&lon=${coordData.result.longitude}&stopTypes=NaptanOnstreetBusCoachStopPair&radius=${radius}`);
-    const stopPoints = await stopPointsResponse.json();
+    const result = await stopPointsResponse.json();
 
-    return stopPoints;
+    const stopPoints = result.stopPoints;
+    stopPoints.sort((stopPointA, stopPointB) => stopPointA.distance - stopPointB.distance);
+
+    //console.log(stopPoints);
+
+    return result.stopPoints.map(stopPoint => {
+        return {
+            id: stopPoint.naptanId,
+            distance: stopPoint.distance,
+        }
+    });
 }
-
 
 // // Function to retrieve bus arrival data 
 // // async denotes that this function contains code which can be run in the background
