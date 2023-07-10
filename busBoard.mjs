@@ -1,81 +1,93 @@
 // Import fetch module to use with API
 import fetch from 'node-fetch';
+// Import readline-sync module to get user input
 import * as readline_sync from "readline-sync";
-
-
-
-// Define key variables for retrieving bus data
-const userPostcode = readline_sync.question("Please enter your Postcode: ");
-//const radius = readline_sync.question("Please enter a search radius in 'm': ")
-const radius = "500";
+// Import winston for error logging
+import * as winston from "winston";
 
 
 // Main function for displaying BusBoard
 // async denotes that this function contains code which can be run in the background
 async function busBoard() {
+
+    // Define key variables for retrieving bus data
+    const userPostcode = readline_sync.question("Please enter your Postcode: ");
+    //const searchRadius = readline_sync.question("Please enter a search radius in 'm': ")
+
+    // Default values for debugging
+    const searchRadius = "500";
+    //const userPostcode = "se77fh"
+
+    // Get latitude and longitude from given postcode
     const coordData = await retrievePostcodeData(userPostcode);
-    displayLongLat(coordData, userPostcode);
 
-    const localStopPoints = await getClosestStopPoints(coordData, radius);
-    //console.log(localStopPoints);
+    // Get local stop points within given radius from postcode
+    const localStopPoints = await getLocalStopPoints(coordData, searchRadius);
 
-    // const arrivalPredictions = await getArrivals(stopCode);
-    // arrivalPredictions.sort((predictionA, predictionB) => predictionA.timeToStation - predictionB.timeToStation);
+    // Get the closest stop points from sorting local stop points by distance
+    const closestStopPoints = sortLocalStopPoints(localStopPoints);
 
-    // displayArrivals(arrivalPredictions);
+    // Display next arrivals for the closest stop points
+    showClosestArrivals(closestStopPoints);
 }
 
 
 // Function to retrieve long and lat from postcode
 async function retrievePostcodeData(userPostcode) {
+    // API query to return location data for a given postcode
     const postcodeResponse = await fetch(`https://api.postcodes.io/postcodes/${userPostcode}`);
     const postcodeData = await postcodeResponse.json();
 
-    return postcodeData;
+    // Return object containing lat and long data
+    return {
+        latitude: postcodeData.result.latitude,
+        longitude: postcodeData.result.longitude,
+    };
 }
 
 
-// Function to display the coordinate data
-function displayLongLat(coordData, userPostcode) {
-    console.log(`The longitude of your postcode (${userPostcode}) is ${coordData.result.longitude} and the latitude is ${coordData.result.latitude}`);
-}
-
-
-// Function to get StopPoints in radius 1000m from lat and long data
-async function getClosestStopPoints(coordData, radius) {
-    const stopPointsResponse = await fetch(`https://api.tfl.gov.uk/StopPoint/?lat=${coordData.result.latitude}&lon=${coordData.result.longitude}&stopTypes=NaptanOnstreetBusCoachStopPair&radius=${radius}`);
+// Function to get StopPoints in radius from lat and long data and sort by distance
+async function getLocalStopPoints(coordData, searchRadius) {
+    // API query to retrieve stop points in a given radius from defined lat and long values
+    const stopPointsResponse = await fetch(`https://api.tfl.gov.uk/StopPoint/?lat=${coordData.latitude}&lon=${coordData.longitude}&stopTypes=NaptanPublicBusCoachTram&radius=${searchRadius}`);
     const result = await stopPointsResponse.json();
 
-    const stopPoints = result.stopPoints;
-    stopPoints.sort((stopPointA, stopPointB) => stopPointA.distance - stopPointB.distance);
-
-    //console.log(stopPoints);
-
-    return result.stopPoints.map(stopPoint => {
-        return {
-            id: stopPoint.naptanId,
-            distance: stopPoint.distance,
-        }
-    });
+    return result;
 }
 
-// // Function to retrieve bus arrival data 
-// // async denotes that this function contains code which can be run in the background
-// async function getArrivals(stopCode) {
-//     const arrivalsResponse = await fetch(`https://api.tfl.gov.uk/StopPoint/${stopCode}/Arrivals`)
-//     const arrivalData = await arrivalsResponse.json();
 
-//     return arrivalData;
-// }
+function sortLocalStopPoints(localStopPoints) {
+    const stopPoints = localStopPoints.stopPoints;
+    // Arrow function to sort found local stop points by distance
+    stopPoints.sort((stopPointA, stopPointB) => stopPointA.distance - stopPointB.distance);
+    return stopPoints;
+}
 
 
-// // Function to print bus data
-// function displayArrivals(arrivalPredictions) {
-//     for (let i = 0; i < arrivalPredictions.length; i++) {
-//         const prediction = arrivalPredictions[i];
-//         console.log(`\nBus number ${prediction.lineName} to ${prediction.destinationName} will arrive in approximately ${Math.floor(prediction.timeToStation/60)} minutes.`);
-//     }
-// }
+// Function to retrieve bus arrival data for closest 5 bus stops
+// async denotes that this function contains code which can be run in the background
+async function showClosestArrivals(closestStopPoints) {
+    // Loop through closest stop points
+    for (let i = 0; i < closestStopPoints.length && i < 5; i++) {
+        // API query to retrieve upcoming arrivals for current stop point ID
+        const arrivalsResponse = await fetch(`https://api.tfl.gov.uk/StopPoint/${closestStopPoints[i].naptanId}/Arrivals`)
+        const arrivalData = await arrivalsResponse.json();
+
+        // Sort upcoming arrivals by time until arrival
+        arrivalData.sort((arrivalA, arrivalB) => arrivalA.timeToStation - arrivalB.timeToStation);
+
+        // Print the stop point name and direction of the route
+        console.log(`Next departures from ${arrivalData[0].stationName} towards ${arrivalData[0].towards}:`);
+        // Loop through upcoming arrivals and print info to screen
+        for (let j = 0; j < arrivalData.length; j++) {
+            const nextArrival = arrivalData[j];
+            console.log(`Bus number ${nextArrival.lineName} to ${nextArrival.destinationName} will arrive in approximately ${Math.floor(nextArrival.timeToStation/60)} minutes.`);
+        }
+
+        // Add a line break to separate each stop point
+        console.log(`\n`);
+    } 
+}
 
 
 // Run the main function
