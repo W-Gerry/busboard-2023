@@ -6,23 +6,32 @@ import * as readline_sync from "readline-sync";
 import * as winston from "winston";
 
 
+// Create logger for error handling/logging
+const logger = winston.createLogger({
+    transports: [
+      new winston.transports.Console(),
+      new winston.transports.File({ filename: 'combined.log' })
+    ]
+});
+
+
 // Main function for displaying BusBoard
 // async denotes that this function contains code which can be run in the background
 async function busBoard() {
 
     // Define key variables for retrieving bus data
-    const userPostcode = readline_sync.question("Please enter your Postcode: ");
-    //const searchRadius = readline_sync.question("Please enter a search radius in 'm': ")
+    const userPostcode = getUserPostcode();
+    // const searchRadius = readline_sync.question("Please enter a search radius in 'm': ")
 
     // Default values for debugging
-    const searchRadius = "500";
-    //const userPostcode = "se77fh"
+    const searchRadius = "300";
+    // const userPostcode = "se77fh"
 
     // Get latitude and longitude from given postcode
     const coordData = await retrievePostcodeData(userPostcode);
 
     // Get local stop points within given radius from postcode
-    const localStopPoints = await getLocalStopPoints(coordData, searchRadius);
+    const localStopPoints = await getLocalStopPoints(coordData, searchRadius, userPostcode);
 
     // Get the closest stop points from sorting local stop points by distance
     const closestStopPoints = sortLocalStopPoints(localStopPoints);
@@ -32,10 +41,22 @@ async function busBoard() {
 }
 
 
+function getUserPostcode() {
+
+    return readline_sync.question("Please enter your Postcode: ").toUpperCase();
+}
+
+
 // Function to retrieve long and lat from postcode
 async function retrievePostcodeData(userPostcode) {
     // API query to return location data for a given postcode
     const postcodeResponse = await fetch(`https://api.postcodes.io/postcodes/${userPostcode}`);
+    
+    if (!postcodeResponse.ok) {
+        logger.info(`Error retrieving coordinate data from postcode: ${userPostcode}`)
+        process.exit(1);
+    }
+    
     const postcodeData = await postcodeResponse.json();
 
     // Return object containing lat and long data
@@ -47,10 +68,25 @@ async function retrievePostcodeData(userPostcode) {
 
 
 // Function to get StopPoints in radius from lat and long data and sort by distance
-async function getLocalStopPoints(coordData, searchRadius) {
+async function getLocalStopPoints(coordData, searchRadius, userPostcode) {
     // API query to retrieve stop points in a given radius from defined lat and long values
     const stopPointsResponse = await fetch(`https://api.tfl.gov.uk/StopPoint/?lat=${coordData.latitude}&lon=${coordData.longitude}&stopTypes=NaptanPublicBusCoachTram&radius=${searchRadius}`);
+   
+    // Error logging if API response does not return a 2## response code
+    if (!stopPointsResponse.ok) {
+        logger.info(`Error retrieving local stop points within radius: ${searchRadius}m of Postcode: ${userPostcode}`)
+        process.exit(1);
+    }
+
+    // Extract array of stop point objects from API response
     const result = await stopPointsResponse.json();
+
+    // Error logging if empty array is returned as result
+    if (result.stopPoints.length === 0) {
+        logger.info(`No local stop points within Radius: ${searchRadius}m of Postcode: ${userPostcode}`)
+
+        process.exit(1);
+    }
 
     return result;
 }
